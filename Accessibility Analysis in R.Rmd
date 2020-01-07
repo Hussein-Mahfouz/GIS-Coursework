@@ -1,0 +1,61 @@
+---
+title: "Transport Accessibility in the GCR"
+output: html_notebook
+---
+
+To conduct an accessibility analysis, we need:
+1) OSM Road Data
+2) Shapefile of the study area
+3) GTFS feed 
+
+We use these inputs to make queries on Open Trip Planner
+
+
+```{r}
+library(osmdata)
+library(tidyverse)
+
+# opq used to build an overpass query
+# we define the geographic extents of the area we want to query from OSM. I have added the extents of the GCR as a vector
+# add_osm_feature() used to specify what we are querying. It takes key, value pairs but here I want all types of highways so I specify the key only
+# For a list of specific values to query, see https://wiki.openstreetmap.org/wiki/Key:highway 
+query <- opq(bbox = c(30.801369, 29.705080, 31.874483, 30.390664)) %>%
+  add_osm_feature(key = 'highway')   
+
+# here we want the data in xml format. Ideally we would use pbf data, as it is more compact and makes the analysis faster, but osmdata_pdf() returns empty files. Issue discussed here https://github.com/ropensci/osmdata/issues/74
+osmdata_xml(query, filename = 'greater-cairo.osm')
+```
+
+Plot to see if the roads have been downloaded
+
+```{r}
+# save query as sp then plot to see if we have the correct area  
+highways_greaterCairo <- osmdata_sp(query)
+sp::plot(highways_greaterCairo$osm_lines)
+```
+
+An alternative to xml is pbf files. These are more compact and presumably make the forthcoming analysis faster.
+They can be downloaded from HOT OSM https://export.hotosm.org/en/v3/exports/new/formats?fbclid=IwAR3m_1bDZK2sYsA-jtPRPYGg9R7kTqt5hzjP88x3p2yvRd4i9tr11i2tG60
+
+I tried to use pbf but the analysis was not quicker so I stuck to the xml file extracted from r
+
+# IMPORTING SHAPEFILES FOR ANALYSIS
+
+In this step I import a shapefile of Greater Cairo. The shapefile has the region divided into hexagons with the population and number of jobs in each hexagon
+
+```{r}
+library(sf)
+
+# import the shapefile
+cairo_hexagons <- st_read("Cairo Shapefiles/H3-res8/H3res-8_GCR_4326.shp")
+```
+
+It is imported and in the corrected crs EPSG:4326 
+Let's plot to check if it looks right
+```{r}
+library(tmap)
+
+# plot
+tm_shape(cairo_hexagons) +
+              tm_polygons()
+```

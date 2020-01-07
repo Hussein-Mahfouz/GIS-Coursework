@@ -5,29 +5,33 @@ library(ggplot2)
 library(tidyverse)
 
 # OTP expects its data to be stored in a specific structure
-# We will make a folder called OTP
-path_data <- file.path("Open-Trip-Planner", "OTP-Cairo")
+# I create a new folder called Open-Trip-Planner in my wd
+#dir.create() creates a subfolder called "OTP-Cairo-All"
+path_data <- file.path("Open-Trip-Planner", "OTP-Cairo-All")
 dir.create(path_data) 
 
 # otp_dl_jar function will download the OTP and save it in the folder we created
 # The function returns the path to the OTP jar file.
 path_otp <- otp_dl_jar(path_data)
 
-# The next step is to add the GTFS and OSM files to the creater folder. I followed this structure:
-# / otp                         # Your top folder for storing all OTP data
+# The next step is to add the GTFS and OSM files to the creater folder. 
+# Create a subfolder in OTP-Cairo-All called graphs then create a subfolder in graphs called default
+# Add the OSM and GTFS inside 'default'
+# I followed this structure:
+# / OTP-Cairo-All             # Created Above
 #   /graphs                     
-#     /default                 # Subfolder with the name of the router
-#       osm.pbf              # Required OSM road map
-#       router-config.json   # Optional config file
-#       build-config.json    # Optional config file
-#       gtfs.zip             # Optional GTFS data
-#       dem.tif              # Optional Elevation data
+#     /default            # Subfolder with the name of the router
+#       osm.pbf              # Required OSM road map   - ADDED
+#       router-config.json   # Optional config file    - NOT ADDED
+#       build-config.json    # Optional config file    - NOT ADDED
+#       gtfs.zip             # Optional GTFS data      - ADDED
+#       dem.tif              # Optional Elevation data - NOT ADDED
 
 # Building an OTP Graph
 # This code will create a new file Graph.obj that will be saved in the location defined by path_data.
 # log <- otp_build_graph(otp = path_otp, dir = path_data, analyst = TRUE) 
-log <- otp_build_graph(otp = path_otp, dir = path_data, memory = 8120, analyst = TRUE)  
-# to assign 10GB of memory to building graph. R assigns 2GB by default
+log <- otp_build_graph(otp = path_otp, dir = path_data, memory = 6000, analyst = TRUE)  
+# to assign 6GB of memory to building graph. R assigns 2GB by default
 
 # Launch OTP and load the graph
 otp_setup(otp = path_otp, dir = path_data)
@@ -53,7 +57,7 @@ library(tmap)
 # Set tmap to interative viewing
 tmap_mode("view")                   
 # Build the map
-map <- tm_shape(reachPolygons[[700]]) +         
+map <- tm_shape(test_iso) +         
             tm_borders() +
             tm_fill(col = "antiquewhite2") +
        tm_shape(cairo_hexagons) +
@@ -128,14 +132,14 @@ totalGCRjobs <- cairo_hexagons %>%
             # # to access the jobs value totalJobs[[i]][[1]]
     # 2 - access_per_60_all = percentage of toal GCR jobs accessible from hexagon 
 for (i in 1:nrows){
-  cairo_hexagons$jobs_60_formal[i] <- 0    #set default value = O: will be given to bad geometries
+  cairo_hexagons$jobs_60_all[i] <- 0    #set default value = O: will be given to bad geometries
   try({
-  cairo_hexagons$jobs_60_formal[i] = totalJobs[[i]][[1]] # add totalJobs to new column in cairo_hexagons called jobs_60_all
+  cairo_hexagons$jobs_60_all[i] = totalJobs[[i]][[1]] # add totalJobs to new column in cairo_hexagons called jobs_60_all
   })
 }
 
 # percentage of jobs accessible from each hexagon
-cairo_hexagons$access_per_60_formal = ((cairo_hexagons$jobs_60_formal/ sum(cairo_hexagons$jobsLFScou))*100)
+cairo_hexagons$access_per_60_all = ((cairo_hexagons$jobs_60_all/ sum(cairo_hexagons$jobsLFScou))*100)
 
 # The analysis has been run twice: 1) All Public Transit modes and 2) Only formal Public Transit Modes
 
@@ -189,9 +193,9 @@ c(jobs_reach_formal, access_score_formal, jobs_reach_all, access_score_all)
 
 # To test the above calculation  >> ALL GOOD 
 #testHex <- cairo_hexagons
-#accessXpop (% of labor market accessible) = access_score * percentage of population
-#testHex$accessXpop <- cairo_hexagons$access_per_60_all * (testHex$pop2018cap/sum(testHex$pop2018cap))
-#access_score_all <- sum(testHex$accessXpop) #/ sum(testHex$pop2018cap)   # 4.6%
+#weighted_access (% access score weighted by population) = access_score * percentage of population
+#cairo_hexagons$weighted_access<- cairo_hexagons$access_per_60_all * (cairo_hexagons$pop2018cap/sum(cairo_hexagons$pop2018cap))
+#access_score_all <- sum(cairo_hexagons$weighted_access)   # 4.7%
 
 
 # GET THE SCORES AT THE REGIONAL LEVEL: CENTRAL INNER OUTER
