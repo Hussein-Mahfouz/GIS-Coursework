@@ -10,6 +10,10 @@ To conduct an accessibility analysis, we need:
 
 We use these inputs to make queries on Open Trip Planner
 
+## Part 1: OSM Data
+
+Define the geographic extents as a vector of c(xmin, ymin, xmax, ymax)
+
 
 ```{r}
 library(osmdata)
@@ -28,12 +32,15 @@ osmdata_xml(query, filename = 'greater-cairo.osm')
 # the xml file is downloaded to the project working directory
 ```
 
-Plot to see if the roads have been downloaded. This takes around 10 minutes and can be skipped
+
+Plot to see if the roads have been downloaded. This takes around 10 minutes and the sp file is huge.
+It can be skipped 
 
 ```{r}
 # save query as sp then plot to see if we have the correct area  
 highways_greaterCairo <- osmdata_sp(query)
 sp::plot(highways_greaterCairo$osm_lines)
+
 ```
 
 An alternative to xml is pbf files. These are more compact and presumably make the forthcoming analysis faster.
@@ -41,7 +48,7 @@ They can be downloaded from the HOT OSM export tool https://export.hotosm.org/en
 
 I tried to use a pbf file but the analysis was not quicker so I stuck to the xml file extracted from r
 
-## Importing Shapefiles for Analysis
+## Part 2: Importing Shapefiles for Analysis
 
 In this step I import a shapefile of Greater Cairo. The shapefile has the region divided into hexagons with the population and number of jobs in each hexagon
 
@@ -77,6 +84,7 @@ tm_shape(cairo_hexagons) +
 
 The next step is to get the centroid of each hexagon. 
 This is because Open Trip Planner takes queries from lat lon coordinates
+
 ```{r}
 # get centroids in seperate feature 
 h3_centroids <- st_centroid(cairo_hexagons)
@@ -102,9 +110,11 @@ h3_centroids <- sfc_as_cols(h3_centroids)
 h3_centroids
 ```
 
-## Open Trip Planner
+## Part 3: Open Trip Planner
 
 I use the package by Malcolm Morgan to query OTP through R https://docs.ropensci.org/opentripplanner/index.html
+
+### 3.1: Settign Up OTP
 
 ```{r}
 library(opentripplanner)
@@ -116,7 +126,7 @@ path_data <- file.path("Open-Trip-Planner", "OTP-Cairo-All")
 dir.create(path_data) 
 ```
 
-Now we need to download OTP and save it to the "OTP-Cairo-All subfolder
+Now we need to download OTP and save it to the "OTP-Cairo-All" subfolder
 
 ```{r}
 # otp_dl_jar function will download the OTP and save it in the folder we created
@@ -131,7 +141,7 @@ I followed this structure:
  
  OTP-Cairo-All             (Created Above)
  
-   'graphs'                     
+   'graphs'   
    
      'default'            # Subfolder with the name of the router
      
@@ -159,6 +169,8 @@ otp_setup(otp = path_otp, dir = path_data)
 # connect r to otp
 otpcon <- otp_connect()
 ```
+
+### 3.2: Querying OTP
 
 Now that OTP is launched and connected to r, we can start querying
 
@@ -193,11 +205,78 @@ tm_shape(reachPolygons[[568]]) +
             tm_borders()
 ```
 
+### 3.4 Repeating Query for Formal Modes
+
+Now let's do the analysis again using a GTFS feed with formal transport modes only. This means we have to subset the GTFS feed and keep only the formal agencies. In OpenTripPlanner, there is a bannedAgencies argument, but this does not exist in the OpenTripPlanner R Package (see the documentation here: https://docs.ropensci.org/opentripplanner/reference/otp_isochrone.html?q=otp%20_%20isoch )
+
+This is definitely a useful enhancement and I am thinking of requesting it on Github 
+
+There is one R package that handles GTFS feeds but it doesn't filter by agencies https://github.com/ipeaGIT/gtfs2gps/blob/master/vignettes/intro_to_gtfs2gps.md
+
+I ended up using a java application that can be accessed from the command line. It subsets GTFS feeds in a matter of seconds. Check the 'How to Reduce your GTFS' section 
+http://developer.onebusaway.org/modules/onebusaway-gtfs-modules/1.3.4-SNAPSHOT/onebusaway-gtfs-transformer-cli.html
+
+I added a text file with arguments for the agencies I want to retain (formal agencies)
+{"op":"retain", "match":{"file":"agency.txt", "agency_id":"CTA"}}
+{"op":"retain", "match":{"file":"agency.txt", "agency_id":"CTA_M"}}
+{"op":"retain", "match":{"file":"agency.txt", "agency_id":"NAT"}}
+
+Now repeat the steps done above to create a directory
+
+```{r}
+library(opentripplanner)
+# create subfolder called "OTP-Cairo-Formal"
+path_data <- file.path("Open-Trip-Planner", "OTP-Cairo-Formal")
+dir.create(path_data) 
+# otp_dl_jar function will download the OTP and save it in the folder we created
+# The function returns the path to the OTP jar file.
+path_otp <- otp_dl_jar(path_data)
+```
+
+
+Before building the graph, add the GTFS feed and the osm road layer in the correct folder. See 3.1.1: Setting UP OTP
+
+
+```{r}
+log <- otp_build_graph(otp = path_otp, dir = path_data, memory = 6000, analyst = TRUE)  
+# Launch OTP and load the graph
+otp_setup(otp = path_otp, dir = path_data)
+
+# connect r to otp
+otpcon <- otp_connect()
+```
+
+Now we can run the analysis again using formal agencies only. 
+
+
+```{r}
+# empty list to store output
+reachPolygonsFormal<-list()
+# get reach polygon for each centroid and store in reachPolygons list
+for (i in 1:nrows){
+  reachPolygonsFormal[[i]] <- otp_isochrone(otpcon = otpcon,
+                                      fromPlace = c(h3_centroids$lon[i], h3_centroids$lat[i]),
+                                      mode = c("WALK", "TRANSIT"),
+                                      maxWalkDistance = 1000,
+                                      date_time = as.POSIXct(strptime("2019-08-05 09:00", "%Y-%m-%d %H:%M")),
+                                      cutoffSec = 3600) # Cut offs in seconds
+}
+```
+
+
+Now we're done with otp. Make sure to run otp_stop() followed by ENTER to terminate Java (it takes up 2GB of precious memory)
+
+### 3.3 Calculating Job Reach and Accessibility Scores 
+
+#### 3.3.1 Intersecting Isochrones with Hexagons
+
 Now that we have the isochrones, we need to calculate how many jobs each isochrone intersects with. 
 
 For each intersected hexagon, we get: (area of intersection / total area of hexagon) * jobs in Hexagon
 
 We then sum all the results to get the number of jobs accessible for the hexagon we are querying from
+
+ALL AGENCIES:
 
 ```{r}
 # empty list to store output
@@ -219,28 +298,65 @@ for (i in 1:nrows){
 
 ```
 
+FORMAL AGENCIES:
+
+```{r}
+# empty list to store output
+totalJobsFormal <-list()
+
+library(lwgeom) # for st_make_valid (this handles invalid geometries https://github.com/r-spatial/sf/issues/870)
+
+for (i in 1:nrows){
+  totalJobsFormal[[i]] <- 0 # there are some points that OTP couldn't route from. try() used to assign 0 value to these points
+  try({
+    totalJobsFormal[[i]] <- reachPolygonsFormal[[i]] %>% 
+      st_make_valid() %>%   # some geometries are invlid (this prevents an error)
+      st_intersection(cairo_hexagons) %>%          # intersect reachPolygon with cairo_hexagons
+      mutate(int_area = (st_area(.)/1000000) %>% as.numeric()) %>% # add column with intersection area with each hexagon
+      mutate(int_jobs = (int_area/area)*jobsLFScou) %>% # int_jobs is the jobs intersected 
+      summarise(total_jobs = sum(int_jobs))  # gets one value for jobs intersected by reachPolygon
+  })
+}
+```
+
 Now that we have the job reach of each hexagon, we need to transfer these values form the totalJobs list back to the cairo_hexagons sf so that we can calculate accessibility scores and, eventually, plot the results
 
 ```{r}
-# add a column for the number of jobs reachable within 60 minutes using all forms of public transport
+# add a column for the number of jobs reachable within 60 minutes using ALL MODES of public transport
 for (i in 1:nrows){
   cairo_hexagons$jobs_60_all[i] <- 0    #set default value = O: will be given to bad geometries
   try({
   cairo_hexagons$jobs_60_all[i] = totalJobs[[i]][[1]] # add totalJobs to new column in cairo_hexagons called jobs_60_all
   })
 }
+
+#add column for the number of jobs reachable within 60 minutes using FORMAL MODES public transport
+for (i in 1:nrows){
+  cairo_hexagons$jobs_60_formal[i] <- 0    #set default value = O: will be given to bad geometries
+  try({
+  cairo_hexagons$jobs_60_formal[i] = totalJobsFormal[[i]][[1]] # add totalJobs to new column in cairo_hexagons called jobs_60_all
+  })
+}
+
 ```
+
+#### 3.3.2 Calculating Accessibility Scores
 
 Now lets get the accessibility score for each hexagon. This is the % of the total jobs in the GCR that are reachable from this hexagon
 
 ```{r}
-# percentage of jobs accessible from each hexagon
+# percentage of jobs accessible from each hexagon - ALL MODES OF PUBLIC TRANSPORT
 cairo_hexagons$access_per_60_all = ((cairo_hexagons$jobs_60_all/ sum(cairo_hexagons$jobsLFScou))*100)
+
+# percentage of jobs accessible from each hexagon - FORMAL MODES OF PUBLIC TRANSPORT
+cairo_hexagons$access_per_60_formal = ((cairo_hexagons$jobs_60_formal/ sum(cairo_hexagons$jobsLFScou))*100)
 ```
  
-Calculate the accessibility score for the entire study area
+#### 3.3.3 Scores for Entire Study Area
 
-1- weigh each hexagons accessibility score by its population (multiply them)
+To calculate the accessibility score for the entire study area:
+
+1- weigh each hexagons job reach/accessibility score by its population (multiply them)
 
 2- divide the sum by the total population of the GCR
 
@@ -249,13 +365,198 @@ Calculate the accessibility score for the entire study area
 
 # Average jobs reached using all modes
 as.numeric((cairo_hexagons$jobs_60_all %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
-# Average accessibility Using all Modes (%):
+# Average accessibility using all Modes (%):
 as.numeric((cairo_hexagons$access_per_60_all %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+# Average jobs reached using formal modes
+as.numeric((cairo_hexagons$jobs_60_formal %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+# # Average accessibility using formal Modes (%):
+as.numeric((cairo_hexagons$access_per_60_formal %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+
+```
+Let's check the regional level scores (scores for central, inner and outer Cairo)
+
+```{r}
+library(dplyr)
+
+cairo_df <- as.data.frame(cairo_hexagons)   #convert sf to dataframe
+cairo_df %>% group_by(znng_t_) %>% 
+  summarise(score_formal = (access_per_60_formal %*% pop2018cap) / sum(pop2018cap), # Regional score: formal transit modes
+            jobs_formal  = (jobs_60_formal %*% pop2018cap) / sum(pop2018cap),
+            jobs_all     = (jobs_60_all %*% pop2018cap) / sum(pop2018cap),
+            score_all    = (access_per_60_all %*% pop2018cap) / sum(pop2018cap), # Regional score: all transit modes
+            inc_abs      = (score_all - score_formal),   # accessibility increase
+            inc_rel      = ((score_all - score_formal)/ score_formal)*100,   # % increase FROM formal modes TO all modes
+            inc_factor   = (score_all/score_formal))    # increase as a multiple
 ```
 
 
+##4 Calculating impact of Informal Transport
+
+The analysis has now been run twice:
+1) All public Transport Modes
+2) Formal Public Transport Modes
+
+Let's check the difference in job reach 
 
 ```{r}
+# Add a column showing the difference in job reach (i.e how much informal transit extends job reach)
+cairo_hexagons$jobs_60_inf = cairo_hexagons$jobs_60_all - cairo_hexagons$jobs_60_formal
+```
 
+The above gives negative values for 12 hexagons. These values are all close to 0. This is an otp issue since it does not
+make sense for isochrones to shrink when more transit options are available. To avoid negative values, I use a for 
+loop to replace them with zeros
+
+```{r}
+for (i in 1:nrows){
+  if (cairo_hexagons$jobs_60_all[i] < cairo_hexagons$jobs_60_formal[i]){
+    cairo_hexagons$jobs_60_inf[i] = 0
+  }
+  else{
+    cairo_hexagons$jobs_60_inf[i] = cairo_hexagons$jobs_60_all[i] - cairo_hexagons$jobs_60_formal[i]
+  }
+}
+```
+
+Difference in accessibility scores
+
+```{r}
+# Get additional % of jobs reached. 
+cairo_hexagons$access_per_60_inf = cairo_hexagons$access_per_60_all - cairo_hexagons$access_per_60_formal
+
+```
+
+We also have the issue of negative values for the same 12 hexagons. For loop it is:
+
+```{r}
+# The above will also give 12 negative values (same issue as jobs_60_inf). For loop used:
+for (i in 1:nrows){
+  if (cairo_hexagons$access_per_60_all[i] < cairo_hexagons$access_per_60_formal[i]){
+    cairo_hexagons$access_per_60_inf[i] = 0
+  }
+  else{
+    cairo_hexagons$access_per_60_inf[i] = cairo_hexagons$access_per_60_all[i] - cairo_hexagons$access_per_60_formal[i]
+  }
+}
+```
+
+## 5 Maps
+
+Lets visualize how accessibility varies throughout the study area 
+
+### 5.1 Importing Shapefiles for Visulizations
+
+```{r}
+library(sf)
+# to plot metro as line
+cairo_metro <- st_read("Cairo Shapefiles/Metro_Trips_TfC.shp")
+# to add text labels for the new towns on the outskirts
+cairo_new_towns <- st_read("Cairo Shapefiles/Central-Inner_Shiyakha_NDC_CAPMAS.shp") %>% 
+                        filter(zoning_tfc == "Outer")
+# Remove 10th of Ramadan City and Giza_Outer Labels)
+cairo_new_towns <- cairo_new_towns[!duplicated(cairo_new_towns$name_citya),] %>% 
+  filter(!grepl('Giza_Outer|10th of Ramdan', name_citya))
+```
+
+### 5.2 Visualizing Job Reach 
+
+#### 5.2.1 All modes of public transport
+
+```{r}
+library(tmap)
+tmap_mode("view")
+
+tm_shape(cairo_hexagons) +
+      tm_fill("jobs_60_all",
+              #style = "jenks",    # used instead of user defined breaks
+              breaks = breaks,
+              palette = 'GnBu', # for specific colors: c('#d7191c', '#fdae61', '#ffffbf', '#abdda4', '#2b83ba', '#253494')
+              #legend.hist = TRUE,
+              title = "Jobs Within 60 min \n(Public Transit, AM Peak)") +
+      tm_layout(title = "Accessibility Across the GCR",        # add a title
+                title.size = 1.5,
+                title.color = "azure4",
+                title.position = c("left", "top"),
+                inner.margins = c(0.09, 0.10, 0.10, 0.08),    # increase map margins to make space for legend
+                fontfamily = 'Georgia',
+                #bg.color = "grey95",
+                frame = TRUE) +
+      tm_borders(col = "grey40", lwd = 0.1)+
+      tm_legend(title.size=0.9,
+                text.size = 0.6,
+                #frame = "grey",
+                position = c("right", "bottom")) +
+      tm_scale_bar(color.dark = "gray60",
+                   position = c("left", "bottom")) +
+  tm_shape(cairo_metro) + 
+      tm_lines(col = 'firebrick4', lwd = 1.5, alpha = 0.8) +
+  tm_add_legend(type = "line", labels = 'Cairo Metro', col = 'firebrick4', lwd = 1.5) + 
+  tm_shape(cairo_new_towns) + 
+      tm_text(text = "name_citya", col = 'black', size = 0.7, 
+              alpha = 0.7, bg.color = "white", bg.alpha = 0.5)
+```
+
+#### 5.2.2 Comparing job reach using all modes to that using formal modes
+
+```{r}
+tm_shape(cairo_hexagons) +
+      tm_fill(c("jobs_60_all", "jobs_60_formal"),
+              #style = "jenks",    # used instead of user defined breaks
+              breaks = breaks,
+              palette = "GnBu",
+              #legend.hist = TRUE,
+              title = "Jobs Reachable \nin 60 min (AM Peak)") +
+      tm_layout(title = c("All Public Transit", "Formal Public Transit"),        # add a title
+                title.size = 1.2,
+                title.position = c("left", "top"),
+                title.color = "azure4",
+                inner.margins = c(0.09, 0.10, 0.10, 0.08),    # increase map margins to make space for legend
+                fontfamily = 'Georgia',
+                #bg.color = "antiquewhite",
+                frame = TRUE) +
+      tm_borders(col = "grey40", lwd = 0.1)+
+      tm_legend(title.size=0.7,
+                text.size = 0.5,
+                #frame = "grey",
+                position = c("right", "bottom")) +
+      tm_scale_bar(color.dark = "gray60",
+                   position = c("left", "bottom")) +
+  tm_shape(cairo_metro) + 
+      tm_lines(col = 'firebrick4', lwd = 1, alpha = 0.8) +
+  # add legend for the metro
+  tm_add_legend(type = "line", labels = 'Cairo Metro', col = 'firebrick4', lwd = 1) +
+  # two plots together on one row
+  tm_facets(nrow = 1)
+```
+
+# 5.2.3 Showing additional job reach when Informal Transit is added
+
+```{r}
+tm_shape(cairo_hexagons) +
+      tm_fill("jobs_60_inf",
+              #style = "pretty",    # used instead of user defined breaks
+              breaks = breaks_diff,
+              palette = "OrRd",
+              #legend.hist = TRUE,
+              title = "Additional Jobs Reached \nWhen Using Informal Transit") +
+      tm_layout(title = "Effect of Informal Transit on Accessibility",        # add a title
+                title.size = 1.2,
+                title.color = "azure4",
+                title.position = c("left", "top"),
+                inner.margins = c(0.09, 0.10, 0.10, 0.08),    # increase map margins to make space for legend
+                fontfamily = 'Georgia',
+                #bg.color = "grey95",
+                frame = FALSE) +
+      tm_borders(col = "grey40", lwd = 0.1)+
+      tm_legend(title.size=0.9,
+                text.size = 0.6,
+                #frame = "grey",
+                position = c("right", "bottom")) +
+      tm_scale_bar(color.dark = "gray60",
+                   position = c("left", "bottom")) +
+  tm_shape(cairo_metro) + 
+      tm_lines(col = 'gray23', lwd = 1.5, alpha = 0.8) +
+  # add legend for the metro
+  tm_add_legend(type = "line", labels = 'Cairo Metro', col = 'gray23', lwd = 1.5)
 ```
 
