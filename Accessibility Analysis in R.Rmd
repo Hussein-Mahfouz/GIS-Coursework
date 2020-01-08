@@ -24,9 +24,11 @@ query <- opq(bbox = c(30.801369, 29.705080, 31.874483, 30.390664)) %>%
 
 # here we want the data in xml format. Ideally we would use pbf data, as it is more compact and makes the analysis faster, but osmdata_pdf() returns empty files. Issue discussed here https://github.com/ropensci/osmdata/issues/74
 osmdata_xml(query, filename = 'greater-cairo.osm')
+
+# the xml file is downloaded to the project working directory
 ```
 
-Plot to see if the roads have been downloaded
+Plot to see if the roads have been downloaded. This takes around 10 minutes and can be skipped
 
 ```{r}
 # save query as sp then plot to see if we have the correct area  
@@ -35,11 +37,11 @@ sp::plot(highways_greaterCairo$osm_lines)
 ```
 
 An alternative to xml is pbf files. These are more compact and presumably make the forthcoming analysis faster.
-They can be downloaded from HOT OSM https://export.hotosm.org/en/v3/exports/new/formats?fbclid=IwAR3m_1bDZK2sYsA-jtPRPYGg9R7kTqt5hzjP88x3p2yvRd4i9tr11i2tG60
+They can be downloaded from the HOT OSM export tool https://export.hotosm.org/en/v3/exports/new/formats?fbclid=IwAR3m_1bDZK2sYsA-jtPRPYGg9R7kTqt5hzjP88x3p2yvRd4i9tr11i2tG60
 
-I tried to use pbf but the analysis was not quicker so I stuck to the xml file extracted from r
+I tried to use a pbf file but the analysis was not quicker so I stuck to the xml file extracted from r
 
-# IMPORTING SHAPEFILES FOR ANALYSIS
+## Importing Shapefiles for Analysis
 
 In this step I import a shapefile of Greater Cairo. The shapefile has the region divided into hexagons with the population and number of jobs in each hexagon
 
@@ -50,7 +52,8 @@ library(sf)
 cairo_hexagons <- st_read("Cairo Shapefiles/H3-res8/H3res-8_GCR_4326.shp")
 ```
 
-It is imported and in the corrected crs EPSG:4326 
+It is imported and in the corrected crs EPSG:4326
+
 Let's plot to check if it looks right
 ```{r}
 library(tmap)
@@ -59,3 +62,200 @@ library(tmap)
 tm_shape(cairo_hexagons) +
               tm_polygons()
 ```
+
+It looks right but the area in the top right needs to be removed. This is the 10th of Ramadan City and is not part of the GCR
+```{r}
+# Remove 10th of Ramadan (it is in Sharqeya)
+# dplyr::filter with !grepl. This removes all rows that contain 10th of Ramadan OR '10 of Rammadan' in nam_tfc column
+
+cairo_hexagons <- cairo_hexagons %>% filter(!grepl('10th of Ramadan|10 Of Rammadan', nam_tfc))
+
+# plot to check that it worked
+tm_shape(cairo_hexagons) +
+              tm_polygons()
+```
+
+The next step is to get the centroid of each hexagon. 
+This is because Open Trip Planner takes queries from lat lon coordinates
+```{r}
+# get centroids in seperate feature 
+h3_centroids <- st_centroid(cairo_hexagons)
+# centroids are provided as geometry but we need the lat and lon in two seperate columns
+# I use this function to split c(lat, lon) to two seperate columns  
+# FROM JM London (https://github.com/r-spatial/sf/issues/231)
+# lat = Y lon = X
+sfc_as_cols <- function(x, names = c("lon","lat")) {
+  stopifnot(inherits(x,"sf") && inherits(sf::st_geometry(x),"sfc_POINT"))
+  ret <- sf::st_coordinates(x)
+  ret <- tibble::as_tibble(ret)
+  stopifnot(length(names) == ncol(ret))
+  x <- x[ , !names(x) %in% names]
+  ret <- setNames(ret,names)
+  dplyr::bind_cols(x,ret)
+  
+}
+
+# add lon and lat columns to dataframe using sfc_as_cols function
+h3_centroids <- sfc_as_cols(h3_centroids)
+
+# two additional columns (lat and lon) have been added to the sfc
+h3_centroids
+```
+
+## Open Trip Planner
+
+I use the package by Malcolm Morgan to query OTP through R https://docs.ropensci.org/opentripplanner/index.html
+
+```{r}
+library(opentripplanner)
+
+# OTP expects its data to be stored in a specific structure
+# I create a new folder called Open-Trip-Planner in my wd
+#dir.create() creates a subfolder called "OTP-Cairo-All"
+path_data <- file.path("Open-Trip-Planner", "OTP-Cairo-All")
+dir.create(path_data) 
+```
+
+Now we need to download OTP and save it to the "OTP-Cairo-All subfolder
+
+```{r}
+# otp_dl_jar function will download the OTP and save it in the folder we created
+# The function returns the path to the OTP jar file.
+path_otp <- otp_dl_jar(path_data)
+```
+
+The next step is to add the GTFS and OSM files to the created folder. 
+Create a subfolder in OTP-Cairo-All called graphs then create a subfolder in graphs called default
+Add the OSM and GTFS inside 'default'
+I followed this structure:
+ 
+ OTP-Cairo-All             (Created Above)
+ 
+   'graphs'                     
+   
+     'default'            # Subfolder with the name of the router
+     
+         osm.pbf              # Required OSM road map   - ADDED
+         gtfs.zip             # Optional GTFS data      - ADDED
+       
+
+I add a GTFS file with all public transport in the GCR (Formal + Informal)
+
+This data is used to build a Graph object which is the base for OpenTripPlanner
+```{r}
+# Building an OTP Graph
+
+# This code will create a new file Graph.obj that will be saved in the location defined by path_data.
+# memory argument assigns more memory to building graph (to speed it up). R assigns 2GB by default
+log <- otp_build_graph(otp = path_otp, dir = path_data, memory = 6000, analyst = TRUE)  
+```
+
+Now we are ready to launch OpenTripPlanner
+
+```{r}
+# Launch OTP and load the graph
+otp_setup(otp = path_otp, dir = path_data)
+
+# connect r to otp
+otpcon <- otp_connect()
+```
+
+Now that OTP is launched and connected to r, we can start querying
+
+```{r}
+# LOOPING FUNCTION TO GET REACH ISOCHRONE OF EACH HEXAGON CENTROID
+
+# variable with number of hexagons (for looping function)
+nrows <- nrow(h3_centroids)
+
+# empty list to store output
+reachPolygons<-list()
+
+# get reach polygon for each centroid and store in reachPolygons list
+for (i in 1:nrows){
+  reachPolygons[[i]] <- otp_isochrone(otpcon = otpcon,
+                                      fromPlace = c(h3_centroids$lon[i], h3_centroids$lat[i]),
+                                      mode = c("WALK", "TRANSIT"),
+                                      maxWalkDistance = 1000,
+                                      date_time = as.POSIXct(strptime("2019-08-05 09:00", "%Y-%m-%d %H:%M")),
+                                      cutoffSec = 3600) # Cut offs in seconds
+}
+
+```
+
+Lets plot one of the isochrones to see if this worked
+
+```{r}
+tmap_mode("view")
+
+tm_shape(reachPolygons[[568]]) +
+            tm_fill(col = "antiquewhite2") +
+            tm_borders()
+```
+
+Now that we have the isochrones, we need to calculate how many jobs each isochrone intersects with. 
+
+For each intersected hexagon, we get: (area of intersection / total area of hexagon) * jobs in Hexagon
+
+We then sum all the results to get the number of jobs accessible for the hexagon we are querying from
+
+```{r}
+# empty list to store output
+totalJobs <-list()
+
+library(lwgeom) # for st_make_valid (this handles invalid geometries https://github.com/r-spatial/sf/issues/870)
+
+for (i in 1:nrows){
+  totalJobs[[i]] <- 0    # there are some points that OTP couldn't route from. try() used to assign 0 value to these points
+  try({
+    totalJobs[[i]] <- reachPolygons[[i]] %>% 
+      st_make_valid() %>%   # some geometries are invlid (this prevents an error)
+      st_intersection(cairo_hexagons) %>%          # intersect reachPolygon with cairo_hexagons
+      mutate(int_area = (st_area(.)/1000000) %>% as.numeric()) %>% # add column with intersection area with each hexagon
+      mutate(int_jobs = (int_area/area)*jobsLFScou) %>% # add column with int_jobs: jobs intersected
+      summarise(total_jobs = sum(int_jobs))  # summarize and get the sum of jobs intersected by reachPolygon
+  })
+}
+
+```
+
+Now that we have the job reach of each hexagon, we need to transfer these values form the totalJobs list back to the cairo_hexagons sf so that we can calculate accessibility scores and, eventually, plot the results
+
+```{r}
+# add a column for the number of jobs reachable within 60 minutes using all forms of public transport
+for (i in 1:nrows){
+  cairo_hexagons$jobs_60_all[i] <- 0    #set default value = O: will be given to bad geometries
+  try({
+  cairo_hexagons$jobs_60_all[i] = totalJobs[[i]][[1]] # add totalJobs to new column in cairo_hexagons called jobs_60_all
+  })
+}
+```
+
+Now lets get the accessibility score for each hexagon. This is the % of the total jobs in the GCR that are reachable from this hexagon
+
+```{r}
+# percentage of jobs accessible from each hexagon
+cairo_hexagons$access_per_60_all = ((cairo_hexagons$jobs_60_all/ sum(cairo_hexagons$jobsLFScou))*100)
+```
+ 
+Calculate the accessibility score for the entire study area
+
+1- weigh each hexagons accessibility score by its population (multiply them)
+
+2- divide the sum by the total population of the GCR
+
+```{r}
+# as.numeric used to return a number instead of a matrix
+
+# Average jobs reached using all modes
+as.numeric((cairo_hexagons$jobs_60_all %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+# Average accessibility Using all Modes (%):
+as.numeric((cairo_hexagons$access_per_60_all %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+```
+
+
+
+```{r}
+
+```
+
