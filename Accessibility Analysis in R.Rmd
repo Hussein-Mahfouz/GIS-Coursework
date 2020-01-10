@@ -15,7 +15,7 @@ We use these inputs to make queries on Open Trip Planner
 Define the geographic extents as a vector of c(xmin, ymin, xmax, ymax)
 
 
-```{r}
+```{r message=FALSE, warning=TRUE}
 library(osmdata)
 library(tidyverse)
 
@@ -33,15 +33,14 @@ osmdata_xml(query, filename = 'greater-cairo.osm')
 ```
 
 
-Plot to see if the roads have been downloaded. This takes around 10 minutes and the sp file is huge.
-It can be skipped 
+You can plot to see if the roads have been downloaded. This takes around 10 minutes and the sp file is huge.
+I will not do it here, but for checking purposes, this is how it would be done:
 
-```{r}
-# save query as sp then plot to see if we have the correct area  
+1) convert xml to sp using osmdata_sp(query)
+
+2) plot sp::plot(highways_greaterCairo$osm_lines)
 highways_greaterCairo <- osmdata_sp(query)
-sp::plot(highways_greaterCairo$osm_lines)
 
-```
 
 An alternative to xml is pbf files. These are more compact and presumably make the forthcoming analysis faster.
 They can be downloaded from the HOT OSM export tool https://export.hotosm.org/en/v3/exports/new/formats?fbclid=IwAR3m_1bDZK2sYsA-jtPRPYGg9R7kTqt5hzjP88x3p2yvRd4i9tr11i2tG60
@@ -114,7 +113,7 @@ h3_centroids
 
 I use the package by Malcolm Morgan to query OTP through R https://docs.ropensci.org/opentripplanner/index.html
 
-### 3.1: Settign Up OTP
+### 3.1: Setting Up OTP
 
 ```{r}
 library(opentripplanner)
@@ -162,7 +161,7 @@ log <- otp_build_graph(otp = path_otp, dir = path_data, memory = 6000, analyst =
 
 Now we are ready to launch OpenTripPlanner
 
-```{r}
+```{r include=FALSE}
 # Launch OTP and load the graph
 otp_setup(otp = path_otp, dir = path_data)
 
@@ -174,7 +173,7 @@ otpcon <- otp_connect()
 
 Now that OTP is launched and connected to r, we can start querying
 
-```{r}
+```{r include=FALSE}
 # LOOPING FUNCTION TO GET REACH ISOCHRONE OF EACH HEXAGON CENTROID
 
 # variable with number of hexagons (for looping function)
@@ -223,6 +222,14 @@ I added a text file with arguments for the agencies I want to retain (formal age
 
 Now repeat the steps done above to create a directory
 
+First thing is to disconnect from OTP. i found that if I don't do this, OTP runs the analysis on the old graph that has the GTFS file with all agencies (even though I provide a new path...)
+
+```{r}
+otp_stop(warn=FALSE)
+```
+
+Now let's give it the new path
+
 ```{r}
 library(opentripplanner)
 # create subfolder called "OTP-Cairo-Formal"
@@ -237,7 +244,7 @@ path_otp <- otp_dl_jar(path_data)
 Before building the graph, add the GTFS feed and the osm road layer in the correct folder. See 3.1.1: Setting UP OTP
 
 
-```{r}
+```{r include=FALSE}
 log <- otp_build_graph(otp = path_otp, dir = path_data, memory = 6000, analyst = TRUE)  
 # Launch OTP and load the graph
 otp_setup(otp = path_otp, dir = path_data)
@@ -249,7 +256,7 @@ otpcon <- otp_connect()
 Now we can run the analysis again using formal agencies only. 
 
 
-```{r}
+```{r include=FALSE}
 # empty list to store output
 reachPolygonsFormal<-list()
 # get reach polygon for each centroid and store in reachPolygons list
@@ -264,7 +271,12 @@ for (i in 1:nrows){
 ```
 
 
-Now we're done with otp. Make sure to run otp_stop() followed by ENTER to terminate Java (it takes up 2GB of precious memory)
+Now we're done with otp. Make sure to terminate the Java OTP instance (it takes up 2GB of precious memory)
+
+```{r}
+# warn equals false so that it doesn't prompt me to confirm
+otp_stop(warn=FALSE)
+```
 
 ### 3.3 Calculating Job Reach and Accessibility Scores 
 
@@ -278,7 +290,7 @@ We then sum all the results to get the number of jobs accessible for the hexagon
 
 ALL AGENCIES:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # empty list to store output
 totalJobs <-list()
 
@@ -300,7 +312,7 @@ for (i in 1:nrows){
 
 FORMAL AGENCIES:
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # empty list to store output
 totalJobsFormal <-list()
 
@@ -321,7 +333,7 @@ for (i in 1:nrows){
 
 Now that we have the job reach of each hexagon, we need to transfer these values form the totalJobs list back to the cairo_hexagons sf so that we can calculate accessibility scores and, eventually, plot the results
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # add a column for the number of jobs reachable within 60 minutes using ALL MODES of public transport
 for (i in 1:nrows){
   cairo_hexagons$jobs_60_all[i] <- 0    #set default value = O: will be given to bad geometries
@@ -364,13 +376,17 @@ To calculate the accessibility score for the entire study area:
 # as.numeric used to return a number instead of a matrix
 
 # Average jobs reached using all modes
-as.numeric((cairo_hexagons$jobs_60_all %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+GCR_avg_jobs_all <- as.numeric((cairo_hexagons$jobs_60_all %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+cat(" Average Job Reach Using All Modes :", GCR_avg_jobs_all, "\n")
 # Average accessibility using all Modes (%):
-as.numeric((cairo_hexagons$access_per_60_all %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+GCR_avg_acc_all <- as.numeric((cairo_hexagons$access_per_60_all %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+cat(" Average Accessibility Using All Modes :", GCR_avg_acc_all, "\n")
 # Average jobs reached using formal modes
-as.numeric((cairo_hexagons$jobs_60_formal %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+GCR_avg_jobs_formal <- as.numeric((cairo_hexagons$jobs_60_formal %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+cat(" Average Job Reach Using Only Formal Modes :", GCR_avg_jobs_formal, "\n")
 # # Average accessibility using formal Modes (%):
-as.numeric((cairo_hexagons$access_per_60_formal %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+GCR_avg_acc_formal <- as.numeric((cairo_hexagons$access_per_60_formal %*% cairo_hexagons$pop2018cap) / sum(cairo_hexagons$pop2018cap))
+cat(" Average Accessibility Using Only Formal Modes :", GCR_avg_acc_formal)
 
 ```
 Let's check the regional level scores (scores for central, inner and outer Cairo)
@@ -380,17 +396,17 @@ library(dplyr)
 
 cairo_df <- as.data.frame(cairo_hexagons)   #convert sf to dataframe
 cairo_df %>% group_by(znng_t_) %>% 
-  summarise(score_formal = (access_per_60_formal %*% pop2018cap) / sum(pop2018cap), # Regional score: formal transit modes
+  summarise(score_formal = (access_per_60_formal %*% pop2018cap) / sum(pop2018cap), # formal transit modes
             jobs_formal  = (jobs_60_formal %*% pop2018cap) / sum(pop2018cap),
             jobs_all     = (jobs_60_all %*% pop2018cap) / sum(pop2018cap),
-            score_all    = (access_per_60_all %*% pop2018cap) / sum(pop2018cap), # Regional score: all transit modes
+            score_all    = (access_per_60_all %*% pop2018cap) / sum(pop2018cap), # all transit modes
             inc_abs      = (score_all - score_formal),   # accessibility increase
             inc_rel      = ((score_all - score_formal)/ score_formal)*100,   # % increase FROM formal modes TO all modes
             inc_factor   = (score_all/score_formal))    # increase as a multiple
 ```
 
 
-##4 Calculating impact of Informal Transport
+## 4 Calculating impact of Informal Transport
 
 The analysis has now been run twice:
 1) All public Transport Modes
@@ -464,7 +480,10 @@ cairo_new_towns <- cairo_new_towns[!duplicated(cairo_new_towns$name_citya),] %>%
 
 ```{r}
 library(tmap)
-tmap_mode("view")
+tmap_mode("plot")
+
+# breaks argument used instead of style
+breaks = c(0, 10000, 20000, 100000, 500000, 1000000, 2500000) 
 
 tm_shape(cairo_hexagons) +
       tm_fill("jobs_60_all",
@@ -499,6 +518,7 @@ tm_shape(cairo_hexagons) +
 #### 5.2.2 Comparing job reach using all modes to that using formal modes
 
 ```{r}
+
 tm_shape(cairo_hexagons) +
       tm_fill(c("jobs_60_all", "jobs_60_formal"),
               #style = "jenks",    # used instead of user defined breaks
@@ -532,6 +552,9 @@ tm_shape(cairo_hexagons) +
 # 5.2.3 Showing additional job reach when Informal Transit is added
 
 ```{r}
+
+breaks_diff = c(0, 100, 20000, 100000, 500000, 1000000)  
+
 tm_shape(cairo_hexagons) +
       tm_fill("jobs_60_inf",
               #style = "pretty",    # used instead of user defined breaks
