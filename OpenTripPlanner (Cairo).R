@@ -45,25 +45,21 @@ source("importing H3 layer.R")
 # isochrones: test isochrone
 # fromPlace = c(lon,lat)  test coords c(31.19911, 30.03537)
 test_iso  <- otp_isochrone(otpcon = otpcon,
-                                fromPlace = c(h3_centroids$lon[8], h3_centroids$lat[8]),
+                                fromPlace = c(h3_centroids$lon[568], h3_centroids$lat[568]),
                                 mode = c("WALK", "TRANSIT"),
                                 maxWalkDistance = 700,
                                 date_time = as.POSIXct(strptime("2019-08-05 09:00", "%Y-%m-%d %H:%M")),
-                                cutoffSec = 3600) # Cut offs in seconds
+                                cutoffSec = c(2700, 3600, 4500, 5400)) # Cut offs in seconds
 
 
 #plot the isochrone
 library(tmap)                       
-# Set tmap to interative viewing
-tmap_mode("view")                   
+                
 # Build the map
-map <- tm_shape(test_iso) +         
+map <- tm_shape(test_iso[3,3]) +         #row then column
             tm_borders() +
-            tm_fill(col = "antiquewhite2") +
-       tm_shape(cairo_hexagons) +
-            tm_borders(alpha = 0.7) 
+            tm_fill(col = "antiquewhite2")
   
-
 # plot
 map                                
 

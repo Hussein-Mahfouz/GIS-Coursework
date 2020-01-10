@@ -136,16 +136,13 @@ path_otp <- otp_dl_jar(path_data)
 The next step is to add the GTFS and OSM files to the created folder. 
 Create a subfolder in OTP-Cairo-All called graphs then create a subfolder in graphs called default
 Add the OSM and GTFS inside 'default'
-I followed this structure:
+I followed this folder structure:
  
- OTP-Cairo-All             (Created Above)
- 
-   'graphs'   
-   
-     'default'            # Subfolder with the name of the router
-     
-         osm.pbf              # Required OSM road map   - ADDED
-         gtfs.zip             # Optional GTFS data      - ADDED
+* OTP-Cairo-All             (folder - created above)
+    * graphs   (folder)
+         * default  (folder)
+              * osm.pbf    (data)          # Required OSM road map   - ADDED
+              * gtfs.zip   (data)          # Optional GTFS data      - ADDED
        
 
 I add a GTFS file with all public transport in the GCR (Formal + Informal)

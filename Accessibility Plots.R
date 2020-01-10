@@ -45,6 +45,7 @@ map_60_all <-
                 position = c("right", "bottom")) +
       tm_scale_bar(color.dark = "gray60",
                    position = c("left", "bottom")) +
+      tm_compass(type = "arrow", position = c("right", "top"), size = 1.5) +
   tm_shape(cairo_metro) + 
       tm_lines(col = 'firebrick4', lwd = 1.5, alpha = 0.8) +
   tm_add_legend(type = "line", labels = 'Cairo Metro', col = 'firebrick4', lwd = 1.5) + 
@@ -82,6 +83,7 @@ map_60_both <-
                 position = c("right", "bottom")) +
       tm_scale_bar(color.dark = "gray60",
                    position = c("left", "bottom")) +
+      tm_compass(type = "arrow", position = c("right", "top"), size = 1.5) +
   tm_shape(cairo_metro) + 
       tm_lines(col = 'firebrick4', lwd = 1, alpha = 0.8) +
   # add legend for the metro
@@ -121,6 +123,7 @@ map_60_diff <-
                 position = c("right", "bottom")) +
       tm_scale_bar(color.dark = "gray60",
                    position = c("left", "bottom")) +
+      tm_compass(type = "arrow", position = c("right", "top"), size = 1.5) +
   tm_shape(cairo_metro) + 
       tm_lines(col = 'gray23', lwd = 1.5, alpha = 0.8) +
   # add legend for the metro
@@ -204,7 +207,7 @@ tmap_save(tm = zones, filename = "Visuals/regions.png")
 
 # Jobs and Pop
 breaks_pop <- c(0, 5000, 20000, 40000, 70000, 130000)
-breaks_job <- c(0, 5000, 10000, 30000, 50000, 100000)
+breaks_job <- c(0, 1000, 10000, 30000, 50000, 100000)
 # FACET MAP
 map_jobs_pop <-
   tm_shape(cairo_hexagons) +
@@ -229,6 +232,7 @@ map_jobs_pop <-
             position = c("right", "bottom")) +
   tm_scale_bar(color.dark = "gray60",
                position = c("left", "bottom")) +
+  tm_compass(type = "arrow", position = c("right", "top"), size = 1.5) +
   tm_shape(cairo_metro) + 
   tm_lines(col = 'firebrick4', lwd = 1, alpha = 0.8) +
   # add legend for the metro
