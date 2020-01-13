@@ -147,6 +147,8 @@ I followed this folder structure:
 
 I add a GTFS file with all public transport in the GCR (Formal + Informal)
 
+(available here https://github.com/Hussein-Mahfouz/GIS-Coursework/tree/master/GTFS%20Feeds)
+
 This data is used to build a Graph object which is the base for OpenTripPlanner
 ```{r}
 # Building an OTP Graph

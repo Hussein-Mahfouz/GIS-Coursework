@@ -133,7 +133,6 @@ map_60_diff
 tmap_save(tm = map_60_diff, filename = "Visuals/access_60_diff.png")
 
 
-
 # TRYING RAYSHADER
 
 popPlot <- cairo_hexagons %>%
@@ -159,21 +158,27 @@ render_snapshot(filename = "Visuals/testPlot.png", clear = TRUE)
 
 # TEST %   DELETE THIS LATER
 
+# calculate self potential
+cairo_hexagons$self_potential = cairo_hexagons$jobsLFScou / cairo_hexagons$jobs_60_all
+cairo_hexagons$self_potential_formal = cairo_hexagons$jobsLFScou / cairo_hexagons$jobs_60_formal
+cairo_hexagons$self_potential_diff = cairo_hexagons$self_potential_formal - cairo_hexagons$self_potential 
+
 breaksTEST = c(0, 0.1, 1, 3, 10, 20, 100)
 
 map_60_all_per <-
   #tm_shape(c_osm) +
   #tm_rgb() +
   tm_shape(cairo_hexagons) +
-      tm_fill("access_per_60_all",
+      tm_fill("self_potential_diff",
               #style = "jenks",    # used instead of user defined breaks
               breaks = breaksTEST,
               palette = "GnBu",
               #legend.hist = TRUE,
-              title = "Jobs Within 60 min \n(Public Transit, AM Peak)") +
-      tm_layout(title = "Accessibility Across the GCR",        # add a title
+              colorNA = '#e0f3db',
+              title = "% Decrease in Self Potential\n When Microbuses Are Considered") +
+      tm_layout(title = "Self Potential",        # add a title
                 title.size = 1.5,
-                title.position = c("center", "top"),
+                title.position = c("left", "top"),
                 inner.margins = c(0.09, 0.10, 0.10, 0.08),    # increase map margins to make space for legend
                 fontfamily = 'Georgia',
                 #bg.color = "grey95",
@@ -187,7 +192,7 @@ map_60_all_per <-
                    position = c("left", "bottom")) 
 
 map_60_all_per  
-tmap_save(tm = map_60_all_per, filename = "Visuals/access_per_60_all.png")
+tmap_save(tm = map_60_all_per, filename = "Visuals/self_potential_diff.png")
 
 # PLOTTING THE CAIRO ZONES
 # tmap
