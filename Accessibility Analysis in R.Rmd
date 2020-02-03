@@ -172,7 +172,7 @@ otpcon <- otp_connect()
 
 Now that OTP is launched and connected to r, we can start querying
 
-```{r include=FALSE}
+```{r}
 # LOOPING FUNCTION TO GET REACH ISOCHRONE OF EACH HEXAGON CENTROID
 
 # variable with number of hexagons (for looping function)
@@ -243,7 +243,7 @@ path_otp <- otp_dl_jar(path_data)
 Before building the graph, add the GTFS feed and the osm road layer in the correct folder. See 3.1.1: Setting UP OTP
 
 
-```{r include=FALSE}
+```{r}
 log <- otp_build_graph(otp = path_otp, dir = path_data, memory = 6000, analyst = TRUE)  
 # Launch OTP and load the graph
 otp_setup(otp = path_otp, dir = path_data)
@@ -255,7 +255,7 @@ otpcon <- otp_connect()
 Now we can run the analysis again using formal agencies only. 
 
 
-```{r include=FALSE}
+```{r}
 # empty list to store output
 reachPolygonsFormal<-list()
 # get reach polygon for each centroid and store in reachPolygons list
