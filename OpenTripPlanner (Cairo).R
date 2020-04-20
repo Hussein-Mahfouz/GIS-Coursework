@@ -42,21 +42,49 @@ otpcon <- otp_connect()
 # run 'importing H3 layer' r script to load data for next part. Scripts must be in the same folder
 source("importing H3 layer.R")
 
-# isochrones: test isochrone
-# fromPlace = c(lon,lat)  test coords c(31.19911, 30.03537)
+# banned agencies as well as other arguments
+
+routingOptions <- otp_routing_options()
+routingOptions$bannedAgencies <- "CTA,NAT,CTA_M,P_O_14"
+routingOptions <- otp_validate_routing_options(routingOptions)
+
+#with routeOptions
 test_iso  <- otp_isochrone(otpcon = otpcon,
                                 fromPlace = c(h3_centroids$lon[568], h3_centroids$lat[568]),
                                 mode = c("WALK", "TRANSIT"),
+                                routingOptions = routingOptions,
                                 maxWalkDistance = 700,
                                 date_time = as.POSIXct(strptime("2019-08-05 09:00", "%Y-%m-%d %H:%M")),
-                                cutoffSec = c(2700, 3600, 4500, 5400)) # Cut offs in seconds
+                                cutoffSec = 3600)
+      
+#plot the isochrone
+library(tmap)                       
+
+# Build the map
+map <- tm_shape(test_iso[1,4]) +         #row then column
+            tm_borders() +
+            tm_fill(col = "antiquewhite2")
+
+# plot
+map                               
+
+
+
+#without routeOptions
+test_iso_all  <- otp_isochrone(otpcon = otpcon,
+                               fromPlace = c(h3_centroids$lon[550], h3_centroids$lat[550]),
+                               mode = c("WALK", "TRANSIT"),
+                               maxWalkDistance = 700,
+                               date_time = as.POSIXct(strptime("2019-08-05 09:00", "%Y-%m-%d %H:%M")),
+                               cutoffSec = 3600)
+
 
 
 #plot the isochrone
 library(tmap)                       
                 
 # Build the map
-map <- tm_shape(test_iso[3,3]) +         #row then column
+map <- tm_shape(test_iso_all[1,4]) +         #row then column
             tm_borders() +
             tm_fill(col = "antiquewhite2")
   

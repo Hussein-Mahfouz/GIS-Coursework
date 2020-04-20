@@ -7,8 +7,10 @@
 #fromPlace = h3_centroids[rep(seq(1, nrow(h3_centroids)), each  = nrow(h3_centroids)),]
 
 # to test. ABOVE TAKES 1 DAY
-toPlace   = h3_centroids[rep(seq(1, nrow(h3_centroids)), times = 3),]
-fromPlace = h3_centroids[rep(seq(11, 13), each  = nrow(h3_centroids)),]
+toPlace   = h3_centroids[rep(seq(1, nrow(h3_centroids)), times = 2),]
+fromPlace = h3_centroids[rep(seq(11, 12), each  = nrow(h3_centroids)),]
+
+
 
 # get the time from each hexagon to each other hexagon
 routes2 <- otp_plan(otpcon = otpcon,
@@ -18,6 +20,7 @@ routes2 <- otp_plan(otpcon = otpcon,
                    toID = as.character(toPlace$W3W_id),
                    mode = c("WALK","TRANSIT"),
                    date_time = as.POSIXct(strptime("2019-08-05 09:00", "%Y-%m-%d %H:%M")),
+                   routingOptions = routingOptions,
                    maxWalkDistance = 850,              # default is 1000, reducing it speeds up processing time
                    numItineraries = 1,                 # return only 1 itinerary
                    get_geometry = FALSE,               # we don't need the geometry, only the time
